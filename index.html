@@ -5,25 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Morse Trainer</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script type="importmap">
     {
       "imports": {
-        "react": "https://esm.sh/react@18",
-        "react-dom": "https://esm.sh/react-dom@18",
-        "react-dom/client": "https://esm.sh/react-dom@18/client",
-        "lucide-react": "https://esm.sh/lucide-react@0.344.0"
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom": "https://esm.sh/react-dom@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.344.0?external=react"
       }
     }
     </script>
     <style>
-        body { overscroll-behavior-y: contain; background: #050505; }
+        body { overscroll-behavior-y: contain; background: #050505; margin: 0; padding: 0; }
         * { -webkit-tap-highlight-color: transparent; }
+        #root { height: 100vh; width: 100vw; }
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root" class="bg-[#050505] text-zinc-500 flex items-center justify-center font-sans uppercase tracking-widest text-xs">
+        Initializing Morse Trainer...
+    </div>
 
-    <script type="module">
+    <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useRef } from 'react';
         import { createRoot } from 'react-dom/client';
         import { Settings, Volume2, VolumeX, RotateCcw } from 'lucide-react';
