@@ -1,0 +1,324 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Settings, Volume2, VolumeX, RotateCcw } from 'lucide-react';
+
+// Coordinates and shapes mapped directly from the physical PCB layout
+const NODES = [
+  // Left Side
+  { label: 'T', path: [1], x: 155, y: 60, shape: 'rect' },
+  { label: 'M', path: [1, 1], x: 110, y: 60, shape: 'rect' },
+  { label: 'O', path: [1, 1, 1], x: 65, y: 60, shape: 'rect' },
+  { label: 'G', path: [1, 1, 0], x: 110, y: 110, shape: 'circle' },
+  { label: 'Q', path: [1, 1, 0, 1], x: 65, y: 110, shape: 'rect' },
+  { label: 'Z', path: [1, 1, 0, 0], x: 132.5, y: 135, shape: 'circle' },
+  { label: 'N', path: [1, 0], x: 155, y: 160, shape: 'circle' },
+  { label: 'K', path: [1, 0, 1], x: 110, y: 160, shape: 'rect' },
+  { label: 'Y', path: [1, 0, 1, 1], x: 65, y: 160, shape: 'rect' },
+  { label: 'C', path: [1, 0, 1, 0], x: 110, y: 210, shape: 'circle' },
+  { label: 'D', path: [1, 0, 0], x: 155, y: 260, shape: 'circle' },
+  { label: 'X', path: [1, 0, 0, 1], x: 110, y: 260, shape: 'rect' },
+  { label: 'B', path: [1, 0, 0, 0], x: 155, y: 320, shape: 'circle' },
+
+  // Right Side
+  { label: 'E', path: [0], x: 245, y: 60, shape: 'circle' },
+  { label: 'I', path: [0, 0], x: 290, y: 60, shape: 'circle' },
+  { label: 'S', path: [0, 0, 0], x: 335, y: 60, shape: 'circle' },
+  { label: 'H', path: [0, 0, 0, 0], x: 380, y: 60, shape: 'circle' },
+  { label: 'U', path: [0, 0, 1], x: 290, y: 110, shape: 'rect' },
+  { label: 'V', path: [0, 0, 0, 1], x: 335, y: 110, shape: 'rect' },
+  { label: 'F', path: [0, 0, 1, 0], x: 312.5, y: 135, shape: 'circle' },
+  { label: 'A', path: [0, 1], x: 245, y: 160, shape: 'rect' },
+  { label: 'R', path: [0, 1, 0], x: 290, y: 160, shape: 'circle' },
+  { label: 'L', path: [0, 1, 0, 0], x: 335, y: 160, shape: 'circle' },
+  { label: 'W', path: [0, 1, 1], x: 245, y: 260, shape: 'rect' },
+  { label: 'P', path: [0, 1, 1, 0], x: 290, y: 260, shape: 'circle' },
+  { label: 'J', path: [0, 1, 1, 1], x: 245, y: 320, shape: 'rect' },
+];
+
+const TRACES = [
+  // Trunk start
+  { x1: 200, y1: 30, x2: 200, y2: 60, val: [] },
+  { x1: 200, y1: 60, x2: 155, y2: 60, val: [1] },
+  { x1: 200, y1: 60, x2: 245, y2: 60, val: [0] },
+
+  // Left Side Horizontals
+  { x1: 155, y1: 60, x2: 110, y2: 60, val: [1, 1] },
+  { x1: 110, y1: 60, x2: 65, y2: 60, val: [1, 1, 1] },
+  { x1: 155, y1: 160, x2: 110, y2: 160, val: [1, 0, 1] },
+  { x1: 110, y1: 160, x2: 65, y2: 160, val: [1, 0, 1, 1] },
+  { x1: 110, y1: 110, x2: 65, y2: 110, val: [1, 1, 0, 1] },
+  { x1: 155, y1: 260, x2: 110, y2: 260, val: [1, 0, 0, 1] },
+
+  // Left Side Verticals
+  { x1: 155, y1: 60, x2: 155, y2: 160, val: [1, 0] },
+  { x1: 155, y1: 160, x2: 155, y2: 260, val: [1, 0, 0] },
+  { x1: 155, y1: 260, x2: 155, y2: 320, val: [1, 0, 0, 0] },
+  { x1: 110, y1: 60, x2: 110, y2: 110, val: [1, 1, 0] },
+  { x1: 110, y1: 160, x2: 110, y2: 210, val: [1, 0, 1, 0] },
+
+  // Z special path
+  { x1: 110, y1: 110, x2: 110, y2: 135, val: [1, 1, 0, 0] },
+  { x1: 110, y1: 135, x2: 132.5, y2: 135, val: [1, 1, 0, 0] },
+
+  // Right Side Horizontals
+  { x1: 245, y1: 60, x2: 290, y2: 60, val: [0, 0] },
+  { x1: 290, y1: 60, x2: 335, y2: 60, val: [0, 0, 0] },
+  { x1: 335, y1: 60, x2: 380, y2: 60, val: [0, 0, 0, 0] },
+  { x1: 245, y1: 160, x2: 290, y2: 160, val: [0, 1, 0] },
+  { x1: 290, y1: 160, x2: 335, y2: 160, val: [0, 1, 0, 0] },
+  { x1: 245, y1: 260, x2: 290, y2: 260, val: [0, 1, 1, 0] },
+
+  // Right Side Verticals
+  { x1: 245, y1: 60, x2: 245, y2: 160, val: [0, 1] },
+  { x1: 245, y1: 160, x2: 245, y2: 260, val: [0, 1, 1] },
+  { x1: 245, y1: 260, x2: 245, y2: 320, val: [0, 1, 1, 1] },
+  { x1: 290, y1: 60, x2: 290, y2: 110, val: [0, 0, 1] },
+  { x1: 335, y1: 60, x2: 335, y2: 110, val: [0, 0, 0, 1] },
+
+  // F special path
+  { x1: 290, y1: 110, x2: 290, y2: 135, val: [0, 0, 1, 0] },
+  { x1: 290, y1: 135, x2: 312.5, y2: 135, val: [0, 0, 1, 0] },
+];
+
+const App = () => {
+  const [sequence, setSequence] = useState([]); 
+  const [isMuted, setIsMuted] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [isPressing, setIsPressing] = useState(false);
+  const [pressStartTime, setPressStartTime] = useState(null);
+  const [autoClearDelay, setAutoClearDelay] = useState(1000); 
+  
+  const audioCtx = useRef(null);
+  const oscillator = useRef(null);
+  const gainNode = useRef(null);
+  const clearTimerRef = useRef(null);
+
+  useEffect(() => {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    audioCtx.current = new AudioContext();
+    gainNode.current = audioCtx.current.createGain();
+    gainNode.current.connect(audioCtx.current.destination);
+    gainNode.current.gain.value = 0;
+    return () => audioCtx.current?.close();
+  }, []);
+
+  const playTone = () => {
+    if (isMuted || !audioCtx.current) return;
+    if (audioCtx.current.state === 'suspended') audioCtx.current.resume();
+    oscillator.current = audioCtx.current.createOscillator();
+    oscillator.current.type = 'sine';
+    oscillator.current.frequency.setValueAtTime(700, audioCtx.current.currentTime);
+    oscillator.current.connect(gainNode.current);
+    gainNode.current.gain.setTargetAtTime(0.1, audioCtx.current.currentTime, 0.01);
+    oscillator.current.start();
+  };
+
+  const stopTone = () => {
+    if (!oscillator.current) return;
+    gainNode.current.gain.setTargetAtTime(0, audioCtx.current.currentTime, 0.01);
+    setTimeout(() => {
+      if (oscillator.current) {
+        oscillator.current.stop();
+        oscillator.current.disconnect();
+        oscillator.current = null;
+      }
+    }, 50);
+  };
+
+  const handleStart = (e) => {
+    if (sequence.length >= 4) return;
+    e.preventDefault();
+    setIsPressing(true);
+    setPressStartTime(Date.now());
+    clearTimeout(clearTimerRef.current);
+    playTone();
+  };
+
+  const handleEnd = (e) => {
+    if (!isPressing) return;
+    e.preventDefault();
+    const duration = Date.now() - pressStartTime;
+    const type = duration > 250 ? 1 : 0; 
+    setSequence(prev => [...prev, type]);
+    setIsPressing(false);
+    stopTone();
+
+    // Start auto-clear countdown
+    if (autoClearDelay > 0) {
+      clearTimeout(clearTimerRef.current);
+      clearTimerRef.current = setTimeout(() => {
+        setSequence([]);
+      }, autoClearDelay);
+    }
+  };
+
+  const reset = () => {
+    clearTimeout(clearTimerRef.current);
+    setSequence([]);
+  };
+
+  const isPathActive = (path) => {
+    if (path.length > sequence.length) return false;
+    for (let i = 0; i < path.length; i++) {
+      if (path[i] !== sequence[i]) return false;
+    }
+    return true;
+  };
+
+  const currentLetterNode = NODES.find(n => JSON.stringify(n.path) === JSON.stringify(sequence));
+
+  return (
+    <div className="flex flex-col h-screen w-full bg-[#050505] text-zinc-100 font-sans overflow-hidden select-none touch-none">
+      
+      <header className="p-6 flex justify-between items-center border-b border-white/5">
+        <div className="flex items-center gap-3">
+          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-[0_0_12px_#22c55e]" />
+          <h1 className="text-lg font-bold tracking-[0.2em] uppercase text-zinc-400">Morse Trainer</h1>
+        </div>
+        <button onClick={() => setShowSettings(!showSettings)} className="p-2 text-zinc-500 hover:text-white transition-colors">
+          <Settings size={22} />
+        </button>
+      </header>
+
+      <main className="flex-1 relative flex flex-col items-center justify-center p-4">
+        
+        {/* Settings Overlay */}
+        {showSettings && (
+          <div className="absolute inset-0 z-50 bg-black/95 backdrop-blur-xl p-8 flex flex-col animate-in fade-in duration-200">
+            <div className="flex justify-between items-center mb-12">
+              <h2 className="text-2xl font-bold">Options</h2>
+              <button onClick={() => setShowSettings(false)} className="px-5 py-2 bg-zinc-800 rounded-full text-sm font-bold">Close</button>
+            </div>
+            <div className="space-y-6">
+
+              {/* Auto Clear Delay Setting */}
+              <div className="flex justify-between items-center p-5 bg-zinc-900/50 rounded-3xl border border-white/5">
+                <div className="flex flex-col gap-1">
+                   <span className="font-medium text-sm">Auto-Clear Delay</span>
+                   <span className="text-xs text-zinc-500">Wait time before reset</span>
+                </div>
+                <div className="flex gap-1 bg-zinc-800/80 p-1.5 rounded-2xl">
+                  {[0, 1000, 2000].map(time => (
+                    <button 
+                      key={time}
+                      onClick={() => setAutoClearDelay(time)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${autoClearDelay === time ? 'bg-green-500 text-black shadow-md' : 'text-zinc-400 hover:text-white'}`}
+                    >
+                      {time === 0 ? 'Off' : `${time/1000}s`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center p-5 bg-zinc-900/50 rounded-3xl border border-white/5">
+                <div className="flex items-center gap-3">
+                   {isMuted ? <VolumeX className="text-zinc-500" /> : <Volume2 className="text-green-400" />}
+                   <span className="font-medium">Sound Feedback</span>
+                </div>
+                <button onClick={() => setIsMuted(!isMuted)} className={`w-14 h-8 rounded-full relative transition-colors ${isMuted ? 'bg-zinc-700' : 'bg-green-600'}`}>
+                  <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all shadow-md ${isMuted ? 'left-1' : 'left-7'}`} />
+                </button>
+              </div>
+              <div className="p-5 bg-zinc-900/50 rounded-3xl border border-white/5 space-y-4">
+                <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Training Reference</h3>
+                <div className="flex justify-between text-sm py-1 border-b border-white/5">
+                  <span className="text-zinc-400 italic">Quick Tap</span>
+                  <span className="text-green-400 font-black">DOT (Circle)</span>
+                </div>
+                <div className="flex justify-between text-sm py-1">
+                  <span className="text-zinc-400 italic">Hold Press</span>
+                  <span className="text-green-400 font-black">DASH (Rect)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* The Card Simulation */}
+        <div className="w-full max-w-[380px] aspect-[4/5] bg-zinc-900/20 rounded-[2.5rem] border border-white/10 relative p-6 shadow-2xl overflow-hidden">
+          <div className="flex justify-between items-start mb-2 opacity-30">
+            <span className="text-[10px] font-black tracking-[0.4em] uppercase">Morse</span>
+            <span className="text-[10px] font-black tracking-[0.4em] uppercase">Code</span>
+          </div>
+
+          <svg viewBox="0 0 400 450" className="w-full h-full">
+            {/* Antenna icon */}
+            <path d="M190 20 L210 20 M200 20 L200 40 M195 25 L205 25" fill="none" stroke="#333" strokeWidth="2" />
+            
+            {/* Traces */}
+            {TRACES.map((t, i) => (
+              <line key={i} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} 
+                className={`stroke-2 transition-colors duration-300 ${isPathActive(t.val) ? 'stroke-green-400/80' : 'stroke-zinc-800'}`} 
+              />
+            ))}
+
+            {/* Nodes */}
+            {NODES.map((n, i) => {
+              const active = isPathActive(n.path);
+              const exact = JSON.stringify(n.path) === JSON.stringify(sequence);
+              return (
+                <g key={i}>
+                  {n.shape === 'circle' ? (
+                    <circle cx={n.x} cy={n.y} r={active ? 9 : 7} 
+                      className={`transition-all duration-300 ${exact ? 'fill-green-400 shadow-lg' : active ? 'fill-green-900/60' : 'fill-[#1a1a1a]'}`}
+                      stroke={active ? '#4ade80' : '#222'} strokeWidth="1.5"
+                    />
+                  ) : (
+                    <rect x={n.x - 12} y={n.y - 7} width={24} height={14} rx="3"
+                      className={`transition-all duration-300 ${exact ? 'fill-green-400 shadow-lg' : active ? 'fill-green-900/60' : 'fill-[#1a1a1a]'}`}
+                      stroke={active ? '#4ade80' : '#222'} strokeWidth="1.5"
+                    />
+                  )}
+                  <text x={n.x} y={n.y - (n.shape === 'rect' ? 14 : 16)} textAnchor="middle" 
+                    className={`text-[12px] font-black select-none pointer-events-none transition-all ${exact ? 'fill-green-400 scale-125' : 'fill-zinc-600'}`}>
+                    {n.label}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* Letter HUD Indicator */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none">
+            <div className={`text-7xl font-black transition-all duration-200 ${currentLetterNode ? 'text-green-500 opacity-100 scale-110 drop-shadow-[0_0_15px_rgba(34,197,94,0.4)]' : 'text-zinc-900 opacity-10'}`}>
+              {currentLetterNode?.label || '?'}
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {/* Control Footer */}
+      <footer className="p-8 pb-12 bg-black border-t border-white/5 flex flex-col gap-6">
+        <div className="relative">
+          <button 
+            onMouseDown={handleStart}
+            onMouseUp={handleEnd}
+            onMouseLeave={handleEnd}
+            onTouchStart={handleStart}
+            onTouchEnd={handleEnd}
+            className={`w-full h-32 rounded-[2.5rem] flex flex-col items-center justify-center transition-all active:scale-[0.98] active:translate-y-1 group relative overflow-hidden border-2 ${isPressing ? 'border-green-500/50 bg-green-500/5 shadow-[0_0_30px_rgba(34,197,94,0.1)]' : 'border-white/10 bg-zinc-900/40'}`}
+          >
+            <div className="flex gap-3 items-center">
+               <div className={`w-3 h-3 rounded-full transition-all duration-100 ${isPressing ? 'bg-green-400 shadow-[0_0_15px_#4ade80]' : 'bg-zinc-700'}`} />
+               <span className={`text-xl font-black tracking-widest uppercase transition-colors ${isPressing ? 'text-green-400' : 'text-zinc-500'}`}>Signal Key</span>
+            </div>
+            
+            {/* Visual dash-threshold timer */}
+            <div className={`absolute bottom-0 left-0 h-1 bg-green-500 transition-all duration-[250ms] ease-linear ${isPressing ? 'opacity-100' : 'opacity-0'}`} style={{ width: isPressing ? '100%' : '0%' }} />
+          </button>
+        </div>
+
+        <button onClick={reset} className="flex items-center justify-center gap-2 text-zinc-600 active:text-green-500 py-3 transition-colors rounded-2xl border border-transparent active:border-green-500/20">
+          <RotateCcw size={18} />
+          <span className="text-xs font-black uppercase tracking-widest">Reset Path</span>
+        </button>
+      </footer>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        body { overscroll-behavior-y: contain; background: #050505; }
+        * { -webkit-tap-highlight-color: transparent; }
+      `}} />
+    </div>
+  );
+};
+
+export default App;
