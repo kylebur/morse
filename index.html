@@ -26,8 +26,9 @@
     </script>
     <style>
         body { overscroll-behavior-y: contain; background: #050505; margin: 0; padding: 0; position: fixed; width: 100%; height: 100%; }
-        * { -webkit-tap-highlight-color: transparent; }
+        * { -webkit-tap-highlight-color: transparent; outline: none; }
         #root { height: 100%; width: 100%; }
+        .game-input { position: absolute; opacity: 0; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -36,12 +37,9 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useRef, useCallback } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { Settings, Volume2, VolumeX, RotateCcw } from 'lucide-react';
+        import { Settings, Volume2, VolumeX, RotateCcw, Play, BookOpen, Trophy, Smartphone } from 'lucide-react';
 
-        // Optimized for iPhone Portrait (higher aspect ratio)
-        // viewBox is 460 x 800
         const NODES = [
-          // Left Side - T spread vertically
           { label: 'T', path: [1], x: 140, y: 100, shape: 'rect' },
           { label: 'M', path: [1, 1], x: 80, y: 100, shape: 'rect' },
           { label: 'O', path: [1, 1, 1], x: 20, y: 100, shape: 'rect' },
@@ -55,8 +53,6 @@
           { label: 'D', path: [1, 0, 0], x: 140, y: 580, shape: 'circle' },
           { label: 'X', path: [1, 0, 0, 1], x: 80, y: 580, shape: 'rect' },
           { label: 'B', path: [1, 0, 0, 0], x: 140, y: 700, shape: 'circle' },
-
-          // Right Side - spread vertically
           { label: 'E', path: [0], x: 260, y: 100, shape: 'circle' },
           { label: 'I', path: [0, 0], x: 320, y: 100, shape: 'circle' },
           { label: 'S', path: [0, 0, 0], x: 380, y: 100, shape: 'circle' },
@@ -107,15 +103,25 @@
         const App = () => {
           const [sequence, setSequence] = useState([]); 
           const [isMuted, setIsMuted] = useState(false);
+          const [isHapticEnabled, setIsHapticEnabled] = useState(true);
           const [showSettings, setShowSettings] = useState(false);
           const [isPressing, setIsPressing] = useState(false);
           const [autoClearDelay, setAutoClearDelay] = useState(1000); 
+          const [activePage, setActivePage] = useState('trainer'); // 'trainer' | 'game'
           
+          // Game State
+          const [gameLetter, setGameLetter] = useState(null);
+          const [score, setScore] = useState(0);
+          const [totalAttempts, setTotalAttempts] = useState(0);
+          const [gameStartTime, setGameLetterStartTime] = useState(null);
+          const [feedback, setFeedback] = useState(null);
+
           const audioCtx = useRef(null);
           const oscillator = useRef(null);
           const gainNode = useRef(null);
           const clearTimerRef = useRef(null);
           const pressStartTimeRef = useRef(0);
+          const gameInputRef = useRef(null);
 
           useEffect(() => {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -125,6 +131,12 @@
             gainNode.current.gain.value = 0;
             return () => audioCtx.current?.close();
           }, []);
+
+          const triggerHaptic = useCallback((duration) => {
+            if (isHapticEnabled && window.navigator.vibrate) {
+              window.navigator.vibrate(duration);
+            }
+          }, [isHapticEnabled]);
 
           const playTone = useCallback(() => {
             if (isMuted || !audioCtx.current) return;
@@ -149,15 +161,16 @@
           }, []);
 
           const handlePointerDown = (e) => {
-            if (sequence.length >= 4 || showSettings) return;
+            if (activePage !== 'trainer' || showSettings) return;
             setIsPressing(true);
             pressStartTimeRef.current = performance.now();
             clearTimeout(clearTimerRef.current);
             playTone();
+            triggerHaptic(50);
           };
 
           const handlePointerUp = (e) => {
-            if (!isPressing) return;
+            if (!isPressing || activePage !== 'trainer') return;
             const duration = performance.now() - pressStartTimeRef.current;
             const type = duration > 200 ? 1 : 0; 
             setSequence(prev => [...prev, type]);
@@ -172,11 +185,65 @@
             }
           };
 
-          const reset = (e) => {
-            e.stopPropagation();
-            clearTimeout(clearTimerRef.current);
-            setSequence([]);
+          // Game Logic
+          const startNextLetter = useCallback(() => {
+            const randomNode = NODES[Math.floor(Math.random() * NODES.length)];
+            setGameLetter(randomNode);
+            setGameLetterStartTime(performance.now());
+            setFeedback(null);
+            playMorseSequence(randomNode.path);
+            if (gameInputRef.current) gameInputRef.current.focus();
+          }, [isMuted, isHapticEnabled]);
+
+          const playMorseSequence = async (path) => {
+            const dotTime = 100;
+            const dashTime = 300;
+            const gap = 100;
+
+            for (const type of path) {
+              const duration = type === 1 ? dashTime : dotTime;
+              if (!isMuted) {
+                 if (audioCtx.current.state === 'suspended') audioCtx.current.resume();
+                 const osc = audioCtx.current.createOscillator();
+                 osc.type = 'sine';
+                 osc.frequency.setValueAtTime(700, audioCtx.current.currentTime);
+                 const g = audioCtx.current.createGain();
+                 g.connect(audioCtx.current.destination);
+                 g.gain.setValueAtTime(0.1, audioCtx.current.currentTime);
+                 osc.connect(g);
+                 osc.start();
+                 osc.stop(audioCtx.current.currentTime + duration/1000);
+              }
+              if (isHapticEnabled && window.navigator.vibrate) {
+                window.navigator.vibrate(duration);
+              }
+              await new Promise(r => setTimeout(r, duration + gap));
+            }
           };
+
+          const handleGameInput = (e) => {
+            const key = e.target.value.toUpperCase().slice(-1);
+            if (!gameLetter || !key.match(/[A-Z]/)) return;
+
+            setTotalAttempts(prev => prev + 1);
+            if (key === gameLetter.label) {
+              const elapsed = performance.now() - gameStartTime;
+              const points = Math.max(10, Math.floor(5000 / (elapsed / 1000)));
+              setScore(prev => prev + points);
+              setFeedback({ correct: true, letter: key });
+              setTimeout(startNextLetter, 1000);
+            } else {
+              setFeedback({ correct: false, letter: key });
+              setTimeout(() => setFeedback(null), 1000);
+            }
+            e.target.value = '';
+          };
+
+          useEffect(() => {
+            if (activePage === 'game' && !gameLetter) {
+              startNextLetter();
+            }
+          }, [activePage]);
 
           const isPathActive = (path) => {
             if (path.length > sequence.length) return false;
@@ -192,23 +259,34 @@
               onPointerCancel={handlePointerUp}
               className={`flex flex-col h-full w-full bg-[#050505] text-zinc-100 font-sans overflow-hidden select-none touch-none transition-colors duration-200 ${isPressing ? 'bg-green-500/5' : ''}`}
             >
-              <div className="absolute top-12 right-6 z-[60]">
+              {/* Navigation Header */}
+              <div className="absolute top-12 left-6 right-6 z-[60] flex justify-between items-center">
+                <div className="flex gap-2 bg-zinc-900/80 backdrop-blur-md p-1 rounded-2xl border border-white/5">
+                  <button 
+                    onClick={() => setActivePage('trainer')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${activePage === 'trainer' ? 'bg-green-500 text-black' : 'text-zinc-400'}`}
+                  >
+                    <BookOpen size={14} /> Trainer
+                  </button>
+                  <button 
+                    onClick={() => setActivePage('game')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${activePage === 'game' ? 'bg-green-500 text-black' : 'text-zinc-400'}`}
+                  >
+                    <Trophy size={14} /> Game
+                  </button>
+                </div>
                 <button 
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); }} 
-                  className="p-3 text-zinc-500 hover:text-white transition-colors"
+                  onClick={() => setShowSettings(!showSettings)} 
+                  className="p-3 bg-zinc-900/80 backdrop-blur-md rounded-2xl border border-white/5 text-zinc-400 hover:text-white transition-colors"
                 >
-                  <Settings size={28} />
+                  <Settings size={20} />
                 </button>
               </div>
 
               <main className="flex-1 relative flex flex-col items-center justify-center p-4">
                 {showSettings && (
-                  <div 
-                    onPointerDown={(e) => e.stopPropagation()}
-                    className="absolute inset-0 z-50 bg-black/95 backdrop-blur-xl p-8 flex flex-col animate-in fade-in duration-200"
-                  >
-                    <div className="flex justify-between items-center mb-12 pt-8">
+                  <div className="absolute inset-0 z-[70] bg-black/95 backdrop-blur-xl p-8 flex flex-col animate-in fade-in duration-200">
+                    <div className="flex justify-between items-center mb-12 pt-12">
                       <h2 className="text-2xl font-bold">Options</h2>
                       <button onClick={() => setShowSettings(false)} className="px-5 py-2 bg-zinc-800 rounded-full text-sm font-bold">Close</button>
                     </div>
@@ -234,65 +312,101 @@
                       <div className="flex justify-between items-center p-5 bg-zinc-900/50 rounded-3xl border border-white/5">
                         <div className="flex items-center gap-3">
                            {isMuted ? <VolumeX className="text-zinc-500" /> : <Volume2 className="text-green-400" />}
-                           <span className="font-medium">Sound Feedback</span>
+                           <span className="font-medium">Sound</span>
                         </div>
                         <button onClick={() => setIsMuted(!isMuted)} className={`w-14 h-8 rounded-full relative transition-colors ${isMuted ? 'bg-zinc-700' : 'bg-green-600'}`}>
                           <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all shadow-md ${isMuted ? 'left-1' : 'left-7'}`} />
+                        </button>
+                      </div>
+
+                      <div className="flex justify-between items-center p-5 bg-zinc-900/50 rounded-3xl border border-white/5">
+                        <div className="flex items-center gap-3">
+                           <Smartphone className={isHapticEnabled ? "text-green-400" : "text-zinc-500"} />
+                           <span className="font-medium">Haptics (iOS PWA)</span>
+                        </div>
+                        <button onClick={() => setIsHapticEnabled(!isHapticEnabled)} className={`w-14 h-8 rounded-full relative transition-colors ${!isHapticEnabled ? 'bg-zinc-700' : 'bg-green-600'}`}>
+                          <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all shadow-md ${!isHapticEnabled ? 'left-1' : 'left-7'}`} />
                         </button>
                       </div>
                     </div>
                   </div>
                 )}
 
-                <div className="w-full h-full max-w-lg relative pointer-events-none mt-8">
-                  <svg viewBox="0 0 460 800" className="w-full h-full">
-                    {TRACES.map((t, i) => (
-                      <line key={i} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} 
-                        className={`stroke-2 transition-colors duration-300 ${isPathActive(t.val) ? 'stroke-green-400/80' : 'stroke-zinc-800'}`} 
-                      />
-                    ))}
-                    {NODES.map((n, i) => {
-                      const active = isPathActive(n.path);
-                      const exact = JSON.stringify(n.path) === JSON.stringify(sequence);
-                      return (
-                        <g key={i}>
-                          {n.shape === 'circle' ? (
-                            <circle cx={n.x} cy={n.y} r={active ? 12 : 10} 
-                              className={`transition-all duration-300 ${exact ? 'fill-green-400' : active ? 'fill-green-900/60' : 'fill-[#1a1a1a]'}`}
-                              stroke={active ? '#4ade80' : '#222'} strokeWidth="2"
-                            />
-                          ) : (
-                            <rect x={n.x - 18} y={n.y - 10} width={36} height={20} rx="5"
-                              className={`transition-all duration-300 ${exact ? 'fill-green-400' : active ? 'fill-green-900/60' : 'fill-[#1a1a1a]'}`}
-                              stroke={active ? '#4ade80' : '#222'} strokeWidth="2"
-                            />
-                          )}
-                          <text x={n.x} y={n.y - (n.shape === 'rect' ? 20 : 22)} textAnchor="middle" 
-                            className={`text-[16px] font-black select-none pointer-events-none transition-all ${exact ? 'fill-green-400 scale-125' : 'fill-zinc-600'}`}>
-                            {n.label}
-                          </text>
-                        </g>
-                      );
-                    })}
-                  </svg>
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none">
-                    <div className={`text-[12rem] font-black transition-all duration-200 ${currentLetterNode ? 'text-green-500 opacity-100 scale-110 drop-shadow-[0_0_35px_rgba(34,197,94,0.4)]' : 'text-zinc-900 opacity-5'}`}>
-                      {currentLetterNode?.label || '?'}
+                {activePage === 'trainer' ? (
+                  <div className="w-full h-full max-w-lg relative pointer-events-none mt-16">
+                    <svg viewBox="0 0 460 800" className="w-full h-full">
+                      {TRACES.map((t, i) => (
+                        <line key={i} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} 
+                          className={`stroke-2 transition-colors duration-300 ${isPathActive(t.val) ? 'stroke-green-400/80' : 'stroke-zinc-800'}`} 
+                        />
+                      ))}
+                      {NODES.map((n, i) => {
+                        const active = isPathActive(n.path);
+                        const exact = JSON.stringify(n.path) === JSON.stringify(sequence);
+                        return (
+                          <g key={i}>
+                            {n.shape === 'circle' ? (
+                              <circle cx={n.x} cy={n.y} r={active ? 12 : 10} 
+                                className={`transition-all duration-300 ${exact ? 'fill-green-400' : active ? 'fill-green-900/60' : 'fill-[#1a1a1a]'}`}
+                                stroke={active ? '#4ade80' : '#222'} strokeWidth="2"
+                              />
+                            ) : (
+                              <rect x={n.x - 18} y={n.y - 10} width={36} height={20} rx="5"
+                                className={`transition-all duration-300 ${exact ? 'fill-green-400' : active ? 'fill-green-900/60' : 'fill-[#1a1a1a]'}`}
+                                stroke={active ? '#4ade80' : '#222'} strokeWidth="2"
+                              />
+                            )}
+                            <text x={n.x} y={n.y - (n.shape === 'rect' ? 20 : 22)} textAnchor="middle" 
+                              className={`text-[16px] font-black select-none pointer-events-none transition-all ${exact ? 'fill-green-400 scale-125' : 'fill-zinc-600'}`}>
+                              {n.label}
+                            </text>
+                          </g>
+                        );
+                      })}
+                    </svg>
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none">
+                      <div className={`text-[12rem] font-black transition-all duration-200 ${currentLetterNode ? 'text-green-500 opacity-100 scale-110 drop-shadow-[0_0_35px_rgba(34,197,94,0.4)]' : 'text-zinc-900 opacity-5'}`}>
+                        {currentLetterNode?.label || '?'}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </main>
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center" onClick={() => gameInputRef.current?.focus()}>
+                    <input 
+                      ref={gameInputRef}
+                      type="text" 
+                      className="game-input"
+                      onChange={handleGameInput}
+                      autoFocus
+                    />
+                    
+                    <div className="mb-12">
+                      <div className="text-zinc-500 uppercase tracking-widest text-xs mb-2">Score</div>
+                      <div className="text-6xl font-black text-green-500 drop-shadow-[0_0_15px_#22c55e44]">{score}</div>
+                      <div className="text-zinc-600 text-sm mt-2">{totalAttempts > 0 ? Math.round((score/(totalAttempts*100))*100) : 0}% Accuracy</div>
+                    </div>
 
-              <div className="absolute bottom-16 left-0 right-0 flex justify-center z-40">
-                <button 
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={reset} 
-                  className="flex items-center justify-center gap-2 text-zinc-700 active:text-green-500 p-6 transition-colors rounded-3xl"
-                >
-                  <RotateCcw size={24} />
-                  <span className="text-sm font-black uppercase tracking-widest">Reset Path</span>
-                </button>
-              </div>
+                    <div className="relative w-48 h-48 flex items-center justify-center">
+                       {feedback ? (
+                         <div className={`text-9xl font-black animate-in zoom-in duration-200 ${feedback.correct ? 'text-green-400' : 'text-red-500'}`}>
+                            {feedback.letter}
+                         </div>
+                       ) : (
+                         <button 
+                           onClick={(e) => { e.stopPropagation(); playMorseSequence(gameLetter.path); }}
+                           className="w-32 h-32 rounded-full bg-zinc-900 border-2 border-zinc-800 flex items-center justify-center text-green-500 active:scale-95 transition-all shadow-xl"
+                         >
+                            <Volume2 size={48} />
+                         </button>
+                       )}
+                    </div>
+
+                    <div className="mt-12 text-zinc-500 text-sm font-medium animate-pulse">
+                      {feedback ? (feedback.correct ? 'Great!' : 'Try again...') : 'Listen and type the letter'}
+                    </div>
+                  </div>
+                )}
+              </main>
             </div>
           );
         };
