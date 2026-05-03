@@ -38,9 +38,7 @@
         import { createRoot } from 'react-dom/client';
         import { Settings, Volume2, VolumeX, RotateCcw } from 'lucide-react';
 
-        // Redistributed nodes for a full-screen layout
         const NODES = [
-          // Left Side - Spread out more
           { label: 'T', path: [1], x: 140, y: 80, shape: 'rect' },
           { label: 'M', path: [1, 1], x: 80, y: 80, shape: 'rect' },
           { label: 'O', path: [1, 1, 1], x: 20, y: 80, shape: 'rect' },
@@ -54,8 +52,6 @@
           { label: 'D', path: [1, 0, 0], x: 140, y: 360, shape: 'circle' },
           { label: 'X', path: [1, 0, 0, 1], x: 80, y: 360, shape: 'rect' },
           { label: 'B', path: [1, 0, 0, 0], x: 140, y: 430, shape: 'circle' },
-
-          // Right Side - Spread out more
           { label: 'E', path: [0], x: 260, y: 80, shape: 'circle' },
           { label: 'I', path: [0, 0], x: 320, y: 80, shape: 'circle' },
           { label: 'S', path: [0, 0, 0], x: 380, y: 80, shape: 'circle' },
@@ -191,7 +187,6 @@
               onPointerCancel={handlePointerUp}
               className={`flex flex-col h-full w-full bg-[#050505] text-zinc-100 font-sans overflow-hidden select-none touch-none transition-colors duration-200 ${isPressing ? 'bg-green-500/5' : ''}`}
             >
-              
               <div className="absolute top-6 right-6 z-[60]">
                 <button 
                   onPointerDown={(e) => e.stopPropagation()}
@@ -293,18 +288,6 @@
                   <span className="text-xs font-black uppercase tracking-widest">Reset Path</span>
                 </button>
               </div>
-            </div>
-          );
-        };
-            </div>
-          );
-        };
-
-        const root = createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
             </div>
           );
         };
